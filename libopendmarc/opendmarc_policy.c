@@ -525,11 +525,16 @@ opendmarc_policy_store_dkim(DMARC_POLICY_T *pctx, u_char *d_equal_domain,
 			goto set_final;
 	}
 	/*
-	 * If we found any record so far that passed.
-	 * preserve it.
+	 * If we found any record so far that passed, preserve it; if the new entry
+	 * is not aligned, only replace an existing one by an unaligned one if it was
+	 * not a pass, but make sure to update the domain in that case!
 	 */
-	if (pctx->dkim_outcome == DMARC_POLICY_DKIM_OUTCOME_PASS)
+	if (pctx->dkim_outcome == DMARC_POLICY_DKIM_OUTCOME_PASS) {
 		return DMARC_PARSE_OKAY;
+	} else {
+		(void) free(pctx->dkim_domain);
+		pctx->dkim_domain = NULL;
+	}
 
 set_final:
 	if (pctx->dkim_domain == NULL)
@@ -1530,6 +1535,39 @@ opendmarc_policy_fetch_utilized_domain(DMARC_POLICY_T *pctx, u_char *buf, size_t
 	return DMARC_PARSE_OKAY;
 }
 
+/**************************************************************************************************
+** OPENDMARC_POLICY_FETCH_FROM_DOMAIN -- Return domain parsed from stored From: header
+**	Arguments
+**		pctx	-- Address of a policy context
+**		buf	-- Where to scribble result
+**		buflen	-- Size of buffer
+**	Returns
+**		DMARC_PARSE_OKAY		-- On success
+**		DMARC_PARSE_ERROR_NULL_CTX	-- If context NULL
+**		DMARC_PARSE_ERROR_EMPTY 	-- If buf null or buflen 0 sized
+**		DMARC_PARSE_ERROR_NO_DOMAIN 	-- If neigher address is available
+**/
+OPENDMARC_STATUS_T
+opendmarc_policy_fetch_from_domain(DMARC_POLICY_T *pctx, u_char *buf, size_t buflen)
+{
+	u_char *which = NULL;
+
+	if (pctx == NULL)
+		return DMARC_PARSE_ERROR_NULL_CTX;
+	if (buf == NULL || buflen == 0)
+		return DMARC_PARSE_ERROR_EMPTY;
+
+	if (pctx->from_domain != NULL)
+		which = pctx->from_domain;
+	if (which == NULL)
+		return DMARC_PARSE_ERROR_NO_DOMAIN;
+# if HAVE_STRLCPY
+	(void) strlcpy((char *)buf, (char *)which, buflen);
+# else
+	(void) strncpy((char *)buf, (char *)which, buflen);
+# endif
+	return DMARC_PARSE_OKAY;
+}
 /**************************************************************************
 ** OPENDMARC_GET_POLICY_TOKEN_USED -- Which policy was actually used
 **
